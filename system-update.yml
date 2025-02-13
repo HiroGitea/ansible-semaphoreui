@@ -1,5 +1,5 @@
 ---
-- name: Update and upgrade packages and reboot if required
+- name: Update and upgrade packages, reboot if required, and then cleanup old packages/kernels
   hosts: all
   become: true
   tasks:
@@ -18,17 +18,6 @@
         upgrade: dist
       when: ansible_facts['os_family'] == 'Debian'
 
-    - name: Remove old kernels and unused packages (Debian-based systems)
-      apt:
-        name: "{{ item }}"
-        state: absent
-      with_items:
-        - linux-image-*
-        - linux-headers-*
-        - "{{ ansible_facts['pkg_mgr'] }}-purge"
-      when: ansible_facts['os_family'] == 'Debian'
-      notify: Clean up apt cache
-
     # RHEL-based systems (e.g., RHEL, CentOS, Rocky Linux)
     - name: Update and upgrade dnf packages (RHEL-based systems)
       dnf:
@@ -41,9 +30,6 @@
         state: latest
       when: ansible_facts['os_family'] == 'RedHat'
 
-    # Removed the problematic kernel removal task for RHEL-based systems
-    # Relying on dnf autoremove in the handler instead
-
     # Arch-based systems (e.g., Arch Linux, Manjaro)
     - name: Update and upgrade pacman packages (Arch-based systems)
       pacman:
@@ -54,17 +40,6 @@
       pacman:
         upgrade: yes
       when: ansible_facts['os_family'] == 'Archlinux'
-
-    - name: Remove old kernels and unused packages (Arch-based systems)
-      pacman:
-        name: "{{ item }}"
-        state: absent
-      with_items:
-        - linux-*
-        - linux-headers-*
-        - "{{ ansible_facts['pkg_mgr'] }}-purge"
-      when: ansible_facts['os_family'] == 'Archlinux'
-      notify: Clean up pacman cache
 
     # Check if reboot is needed
     - name: Check if system needs to be rebooted
@@ -78,6 +53,39 @@
         reboot_timeout: 300
         pre_reboot_delay: 10
       when: reboot_required.rc == 0
+
+    # --- Tasks to remove old kernels and unused packages AFTER reboot ---
+
+    # Debian-based systems (e.g., Ubuntu, Debian) - Run AFTER reboot
+    - name: Remove old kernels and unused packages (Debian-based systems) - AFTER REBOOT
+      apt:
+        name: "{{ item }}"
+        state: absent
+      with_items:
+        - linux-image-*
+        - linux-headers-*
+        - "{{ ansible_facts['pkg_mgr'] }}-purge"
+      when: ansible_facts['os_family'] == 'Debian'
+      notify: Clean up apt cache
+
+    # RHEL-based systems (e.g., RHEL, CentOS, Rocky Linux) - Run AFTER reboot
+    - name: Remove old kernels and unused packages (RHEL-based systems) - AFTER REBOOT
+      command: dnf autoremove -y  # Using dnf autoremove as per previous discussion
+      when: ansible_facts['os_family'] == 'RedHat'
+      notify: Clean up dnf cache
+
+    # Arch-based systems (e.g., Arch Linux, Manjaro) - Run AFTER reboot
+    - name: Remove old kernels and unused packages (Arch-based systems) - AFTER REBOOT
+      pacman:
+        name: "{{ item }}"
+        state: absent
+      with_items:
+        - linux-*
+        - linux-headers-*
+        - "{{ ansible_facts['pkg_mgr'] }}-purge"
+      when: ansible_facts['os_family'] == 'Archlinux'
+      notify: Clean up pacman cache
+
 
   handlers:
     - name: Clean up apt cache
