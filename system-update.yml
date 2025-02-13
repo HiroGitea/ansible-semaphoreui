@@ -46,7 +46,7 @@
       reboot:
         msg: "Reboot initiated by Ansible for system updates"
         connect_timeout: 5
-        reboot_timeout: 300
+        reboot_timeout: 600
         pre_reboot_delay: 10
 
     # --- Tasks to remove old kernels and unused packages AFTER reboot ---
