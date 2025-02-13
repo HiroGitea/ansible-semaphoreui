@@ -12,82 +12,94 @@
       apt:
         update_cache: yes
       when: ansible_facts['os_family'] == 'Debian'
+      register: apt_update_result
 
     - name: Upgrade all apt packages (Debian-based systems)
       apt:
         upgrade: dist
       when: ansible_facts['os_family'] == 'Debian'
+      register: apt_upgrade_result
 
     # RHEL-based systems (e.g., RHEL, CentOS, Rocky Linux)
     - name: Update and upgrade dnf packages (RHEL-based systems)
       dnf:
         update_cache: yes
       when: ansible_facts['os_family'] == 'RedHat'
+      register: dnf_update_result
 
     - name: Upgrade all dnf packages (RHEL-based systems)
       dnf:
         name: '*'
         state: latest
       when: ansible_facts['os_family'] == 'RedHat'
+      register: dnf_upgrade_result
 
     # Arch-based systems (e.g., Arch Linux, Manjaro)
     - name: Update and upgrade pacman packages (Arch-based systems)
       pacman:
         update_cache: yes
       when: ansible_facts['os_family'] == 'Archlinux'
+      register: pacman_update_result
 
     - name: Upgrade all pacman packages (Arch-based systems)
       pacman:
         upgrade: yes
       when: ansible_facts['os_family'] == 'Archlinux'
+      register: pacman_upgrade_result
 
-    # Reboot the server unconditionally
+    # Reboot the server conditionally (only if updates occurred)
     - name: Reboot the server after updates
       reboot:
         msg: "Reboot initiated by Ansible for system updates"
         connect_timeout: 5
         reboot_timeout: 600
         pre_reboot_delay: 10
+      when: apt_update_result.changed or apt_upgrade_result.changed or dnf_update_result.changed or dnf_upgrade_result.changed or pacman_update_result.changed or pacman_upgrade_result.changed
 
     # --- Tasks to remove old kernels and unused packages AFTER reboot ---
 
     # Debian-based systems (e.g., Ubuntu, Debian) - Run AFTER reboot
     - name: Remove old kernels and unused packages (Debian-based systems) - AFTER REBOOT
       apt:
-        name: "{{ item }}"
-        state: absent
-      with_items:
-        - linux-image-*
-        - linux-headers-*
-        - "{{ ansible_facts['pkg_mgr'] }}-purge"
+        autoremove: yes
+        purge: yes
       when: ansible_facts['os_family'] == 'Debian'
-      notify: Clean up apt cache
+      # notify: Clean up apt cache # 移除 notify
 
     # RHEL-based systems (e.g., RHEL, CentOS, Rocky Linux) - Run AFTER reboot
     - name: Remove old kernels and unused packages (RHEL-based systems) - AFTER REBOOT
       command: dnf autoremove -y  # Using dnf autoremove as per previous discussion
       when: ansible_facts['os_family'] == 'RedHat'
-      notify: Clean up dnf cache
+
 
     # Arch-based systems (e.g., Arch Linux, Manjaro) - Run AFTER reboot
     - name: Remove old kernels and unused packages (Arch-based systems) - AFTER REBOOT
-      pacman:
-        name: "{{ item }}"
-        state: absent
-      with_items:
-        - linux-*
-        - linux-headers-*
-        - "{{ ansible_facts['pkg_mgr'] }}-purge"
+      command: paccache -ruk1 -y  # 修改为保留 1 个缓存版本，更安全
       when: ansible_facts['os_family'] == 'Archlinux'
-      notify: Clean up pacman cache
+      # notify: Clean up pacman cache # 移除 notify
 
-
-  handlers:
-    - name: Clean up apt cache
+    # Clean up apt cache (Debian) - 直接作为 task 执行
+    - name: Clean up apt cache (Debian-based systems) - AFTER REBOOT
       command: apt-get autoremove -y
+      when: ansible_facts['os_family'] == 'Debian'
 
-    - name: Clean up dnf cache
-      command: dnf autoremove -y  # Modified handler to use dnf autoremove
+    # Clean up dnf cache (RHEL) - 直接作为 task 执行
+    - name: Clean up dnf cache (RHEL-based systems) - AFTER REBOOT
+      command: dnf autoremove -y
+      when: ansible_facts['os_family'] == 'RedHat'
 
-    - name: Clean up pacman cache
-      command: pacman -Rns $(pacman -Qdtq) -y
+    # Clean up pacman cache (Arch) - 直接作为 task 执行，并使用 paccache clean
+    - name: Clean up pacman cache (Arch-based systems) - AFTER REBOOT
+      command: paccache -ruk1 -y # 使用 paccache -ruk1 -y 清理缓存
+      when: ansible_facts['os_family'] == 'Archlinux'
+
+
+  # handlers: # 移除 handlers 部分
+  #   - name: Clean up apt cache
+  #     command: apt-get autoremove -y
+
+  #   - name: Clean up dnf cache
+  #     command: dnf autoremove -y  # Modified handler to use dnf autoremove
+
+  #   - name: Clean up pacman cache
+  #     command: paccache -ruk0 -y # paccache clean
