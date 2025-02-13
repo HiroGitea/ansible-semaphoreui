@@ -1,0 +1,79 @@
+---
+- name: Update and upgrade packages
+  hosts: all
+  become: true
+  tasks:
+    # Gather facts to determine the OS type
+    - name: Gather facts
+      setup:
+
+    # Debian-based systems (e.g., Ubuntu, Debian)
+    - name: Update and upgrade apt packages (Debian-based systems)
+      apt:
+        update_cache: yes
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Upgrade all apt packages (Debian-based systems)
+      apt:
+        upgrade: dist
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Remove old kernels and unused packages (Debian-based systems)
+      apt:
+        name: "{{ item }}"
+        state: absent
+      with_items:
+        - linux-image-*
+        - linux-headers-*
+        - "{{ ansible_facts['pkg_mgr'] }}-purge"
+      when: ansible_facts['os_family'] == 'Debian'
+      notify: Clean up apt cache
+
+    # RHEL-based systems (e.g., RHEL, CentOS, Rocky Linux)
+    - name: Update and upgrade dnf packages (RHEL-based systems)
+      dnf:
+        update_cache: yes
+      when: ansible_facts['os_family'] == 'RedHat'
+
+    - name: Upgrade all dnf packages (RHEL-based systems)
+      dnf:
+        name: '*'
+        state: latest
+      when: ansible_facts['os_family'] == 'RedHat'
+
+    - name: Remove old kernels and unused packages (RHEL-based systems)
+      command: dnf remove -y $(dnf repoquery --installonly --latest-limit=-1 -q)
+      when: ansible_facts['os_family'] == 'RedHat'
+      notify: Clean up dnf cache
+
+    # Arch-based systems (e.g., Arch Linux, Manjaro)
+    - name: Update and upgrade pacman packages (Arch-based systems)
+      pacman:
+        update_cache: yes
+      when: ansible_facts['os_family'] == 'Archlinux'
+
+    - name: Upgrade all pacman packages (Arch-based systems)
+      pacman:
+        upgrade: yes
+      when: ansible_facts['os_family'] == 'Archlinux'
+
+    - name: Remove old kernels and unused packages (Arch-based systems)
+      pacman:
+        name: "{{ item }}"
+        state: absent
+      with_items:
+        - linux-*
+        - linux-headers-*
+        - "{{ ansible_facts['pkg_mgr'] }}-purge"
+      when: ansible_facts['os_family'] == 'Archlinux'
+      notify: Clean up pacman cache
+
+  handlers:
+    - name: Clean up apt cache
+      command: apt-get autoremove -y
+
+    - name: Clean up dnf cache
+      command: dnf autoremove -y
+
+    - name: Clean up pacman cache
+      command: pacman -Rns $(pacman -Qdtq) -y
