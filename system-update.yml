@@ -1,5 +1,5 @@
 ---
-- name: Update and upgrade packages
+- name: Update and upgrade packages and reboot if required
   hosts: all
   become: true
   tasks:
@@ -65,6 +65,19 @@
         - "{{ ansible_facts['pkg_mgr'] }}-purge"
       when: ansible_facts['os_family'] == 'Archlinux'
       notify: Clean up pacman cache
+
+    # Check if reboot is needed
+    - name: Check if system needs to be rebooted
+      register: reboot_required
+      command: needs-reboot
+
+    - name: Reboot the server if kernel or system libraries were updated
+      reboot:
+        msg: "Reboot initiated by Ansible for kernel/system updates"
+        connect_timeout: 5
+        reboot_timeout: 300
+        pre_reboot_delay: 10
+      when: reboot_required.rc == 0
 
   handlers:
     - name: Clean up apt cache
