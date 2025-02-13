@@ -42,7 +42,7 @@
       when: ansible_facts['os_family'] == 'RedHat'
 
     - name: Remove old kernels and unused packages (RHEL-based systems)
-      shell: dnf remove -y $(dnf repoquery --installonly --latest-limit=-1 -q)
+      shell: dnf remove -y $(dnf repoquery --installonly -q 'kernel*' --latest-limit=-1 --exclude kernel-core)
       when: ansible_facts['os_family'] == 'RedHat'
       notify: Clean up dnf cache
 
